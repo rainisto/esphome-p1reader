@@ -1,24 +1,25 @@
 //-------------------------------------------------------------------------------------
 // ESPHome P1 Electricity Meter custom sensor
 // Copyright 2020 Pär Svanström
-// 
+//
 // History
 //  0.1.0 2020-11-05:   Initial release
 //
 // MIT License
-// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
-// to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
 // and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 //
 // The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 //
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //-------------------------------------------------------------------------------------
 
 #include "esphome.h"
+#include <math.h>
 
 #define BUF_SIZE 60
 
@@ -69,6 +70,13 @@ class P1Reader : public Component, public UARTDevice {
   const char* DELIMITERS = "()*:";
   const char* DATA_ID = "1-0";
   char buffer[BUF_SIZE];
+  bool useHDLCReader = false;
+
+  const int8_t OUTSIDE_FRAME = 0;
+  const int8_t FOUND_FRAME = 1;
+
+
+  int8_t parseHDLCState = OUTSIDE_FRAME;
 
   public:
     Sensor *cumulativeActiveImport = new Sensor();
@@ -111,10 +119,20 @@ class P1Reader : public Component, public UARTDevice {
 
     P1Reader(UARTComponent *parent) : UARTDevice(parent) {}
 
+    P1Reader(UARTComponent *parent, bool useHDLCReader) : UARTDevice(parent)
+    {
+      this->useHDLCReader = useHDLCReader;
+    }
+
     void setup() override { }
 
-    void loop() override {
-      readP1Message();
+    void loop() override
+    {
+      if (useHDLCReader) {
+        readHDLCMessage();
+      } else {
+        readP1Message();
+      }
     }
 
   private:
@@ -131,84 +149,85 @@ class P1Reader : public Component, public UARTDevice {
       return crc;
     }
 
-    void parseRow(ParsedMessage* parsed, char* obisCode, char* value) {
+    void parseRow(ParsedMessage* parsed, char* obisCode, double value) {
+      ESP_LOGD("parseRow", "OBIS %s value %f", obisCode, value);
       if (strncmp(obisCode, "1.8.0", 5) == 0) {
-        parsed->cumulativeActiveImport = atof(value);
+        parsed->cumulativeActiveImport = value;
 
       } else if (strncmp(obisCode, "2.8.0", 5) == 0) {
-        parsed->cumulativeActiveExport = atof(value);
+        parsed->cumulativeActiveExport = value;
 
       } else if (strncmp(obisCode, "3.8.0", 5) == 0) {
-        parsed->cumulativeReactiveImport = atof(value);
+        parsed->cumulativeReactiveImport = value;
 
       } else if (strncmp(obisCode, "4.8.0", 5) == 0) {
-        parsed->cumulativeReactiveExport = atof(value);
+        parsed->cumulativeReactiveExport = value;
 
       } else if (strncmp(obisCode, "1.7.0", 5) == 0) {
-        parsed->momentaryActiveImport = atof(value);
+        parsed->momentaryActiveImport = value;
 
       } else if (strncmp(obisCode, "2.7.0", 5) == 0) {
-        parsed->momentaryActiveExport = atof(value);
+        parsed->momentaryActiveExport = value;
 
       } else if (strncmp(obisCode, "3.7.0", 5) == 0) {
-        parsed->momentaryReactiveImport = atof(value);
+        parsed->momentaryReactiveImport = value;
 
       } else if (strncmp(obisCode, "4.7.0", 5) == 0) {
-        parsed->momentaryReactiveExport = atof(value);
+        parsed->momentaryReactiveExport = value;
 
       } else if (strncmp(obisCode, "21.7.0", 6) == 0) {
-        parsed->momentaryActiveImportL1 = atof(value);
+        parsed->momentaryActiveImportL1 = value;
 
       } else if (strncmp(obisCode, "22.7.0", 6) == 0) {
-        parsed->momentaryActiveExportL1 = atof(value);
+        parsed->momentaryActiveExportL1 = value;
 
       } else if (strncmp(obisCode, "41.7.0", 6) == 0) {
-        parsed->momentaryActiveImportL2 = atof(value);
+        parsed->momentaryActiveImportL2 = value;
 
       } else if (strncmp(obisCode, "42.7.0", 6) == 0) {
-        parsed->momentaryActiveExportL2 = atof(value);
+        parsed->momentaryActiveExportL2 = value;
 
       } else if (strncmp(obisCode, "61.7.0", 6) == 0) {
-        parsed->momentaryActiveImportL3 = atof(value);
+        parsed->momentaryActiveImportL3 = value;
 
       } else if (strncmp(obisCode, "62.7.0", 6) == 0) {
-        parsed->momentaryActiveExportL3 = atof(value);
+        parsed->momentaryActiveExportL3 = value;
 
       } else if (strncmp(obisCode, "23.7.0", 6) == 0) {
-        parsed->momentaryReactiveImportL1 = atof(value);
+        parsed->momentaryReactiveImportL1 = value;
 
       } else if (strncmp(obisCode, "24.7.0", 6) == 0) {
-        parsed->momentaryReactiveExportL1 = atof(value);
+        parsed->momentaryReactiveExportL1 = value;
 
       } else if (strncmp(obisCode, "43.7.0", 6) == 0) {
-        parsed->momentaryReactiveImportL2 = atof(value);
+        parsed->momentaryReactiveImportL2 = value;
 
       } else if (strncmp(obisCode, "44.7.0", 6) == 0) {
-        parsed->momentaryReactiveExportL2 = atof(value);
+        parsed->momentaryReactiveExportL2 = value;
 
       } else if (strncmp(obisCode, "63.7.0", 6) == 0) {
-        parsed->momentaryReactiveImportL3 = atof(value);
+        parsed->momentaryReactiveImportL3 = value;
 
       } else if (strncmp(obisCode, "64.7.0", 6) == 0) {
-        parsed->momentaryReactiveExportL3 = atof(value);
+        parsed->momentaryReactiveExportL3 = value;
 
       } else if (strncmp(obisCode, "32.7.0", 6) == 0) {
-        parsed->voltageL1 = atof(value);
+        parsed->voltageL1 = value;
 
       } else if (strncmp(obisCode, "52.7.0", 6) == 0) {
-        parsed->voltageL2 = atof(value);
+        parsed->voltageL2 = value;
 
       } else if (strncmp(obisCode, "72.7.0", 6) == 0) {
-        parsed->voltageL3 = atof(value);
+        parsed->voltageL3 = value;
 
       } else if (strncmp(obisCode, "31.7.0", 6) == 0) {
-        parsed->currentL1 = atof(value);
+        parsed->currentL1 = value;
 
       } else if (strncmp(obisCode, "51.7.0", 6) == 0) {
-        parsed->currentL2 = atof(value);
+        parsed->currentL2 = value;
 
       } else if (strncmp(obisCode, "71.7.0", 6) == 0) {
-        parsed->currentL3 = atof(value);
+        parsed->currentL3 = value;
       }
     }
 
@@ -256,14 +275,11 @@ class P1Reader : public Component, public UARTDevice {
       if (available()) {
         uint16_t crc = 0x0000;
         ParsedMessage parsed = ParsedMessage();
-        bool telegramEnded = false;
 
         while (available()) {
           int len = Serial.readBytesUntil('\n', buffer, BUF_SIZE);
 
           if (len > 0) {
-          	ESP_LOGD("data", "%s", buffer);
-
             // put newline back as it is required for CRC calculation
             buffer[len] = '\n';
             buffer[len + 1] = '\0';
@@ -273,8 +289,7 @@ class P1Reader : public Component, public UARTDevice {
               crc = crc16_update(crc, buffer[0]);
               int crcFromMsg = (int) strtol(&buffer[1], NULL, 16);
               parsed.crcOk = crc == crcFromMsg;
-              ESP_LOGI("crc", "Telegram read. CRC: %04X = %04X. PASS = %s", crc, crcFromMsg, parsed.crcOk ? "YES": "NO");
-              telegramEnded = true;
+              ESP_LOGD("crc", "CRC: %04X = %04X. PASS = %s", crc, crcFromMsg, parsed.crcOk ? "YES": "NO");
 
             // otherwise pass the row through the CRC calculation
             } else {
@@ -292,22 +307,200 @@ class P1Reader : public Component, public UARTDevice {
               if (strncmp(DATA_ID, dataId, strlen(DATA_ID)) == 0) {
                 char* value = strtok(NULL, DELIMITERS);
                 char* unit = strtok(NULL, DELIMITERS);
-                parseRow(&parsed, obisCode, value);
+                ESP_LOGD("data", "[%s]: %s %s", obisCode, value, unit);
+                parseRow(&parsed, obisCode, atof(value));
               }
             }
           }
           // clean buffer
           memset(buffer, 0, BUF_SIZE - 1);
-        
-          if (!telegramEnded && !available()) {
-          	// wait for more data
-          	delay(40);
-          }
         }
 
         // if the CRC pass, publish sensor values
         if (parsed.crcOk) {
           publishSensors(&parsed);
+        }
+      }
+    }
+
+    bool readHDLCStruct(ParsedMessage* parsed) {
+      if(Serial.readBytes(buffer, 3) != 3)
+        return false;
+
+      if(buffer[0] != 0x02) {
+        return false;
+      }
+
+      char obis[7];
+
+      uint8_t struct_len = buffer[1];
+      //ESP_LOGD("hdlc", "Struct length is %d", struct_len);
+
+      uint8_t tag = buffer[2];
+
+      if(tag != 0x09) {
+        ESP_LOGE("hdcl", "Unexpected tag %X in struct, bailing out", tag);
+        return false;
+      }
+
+      uint8_t str_length = Serial.read();
+      if(Serial.readBytes(buffer, str_length) != str_length) {
+        ESP_LOGE("hdlc", "Unable to read %d bytes of OBIS code", str_length);
+        return false;
+      }
+      buffer[str_length] = 0; // Null-terminate
+      sprintf(obis, "%d.%d.%d", buffer[2], buffer[3], buffer[4]);
+
+      tag = Serial.read();
+
+      bool is_signed = false;
+      uint32_t uvalue = 0;
+      int32_t value = 0;
+      if (tag == 0x09) {
+        str_length = Serial.read();
+        if(Serial.readBytes(buffer, str_length) != str_length) {
+          ESP_LOGE("hdlc", "Unable to read %d bytes of string", str_length);
+          return false;
+        }
+
+        buffer[str_length] = 0;
+        //ESP_LOGD("hdlc", "Read string length %d", str_length);
+      } else if(tag == 0x06) {
+        Serial.readBytes(buffer, 4);
+        //uvalue = buffer[0] | buffer[1] << 8 | buffer[2] << 16 | buffer[3] << 24;
+        uvalue = buffer[3] | buffer[2] << 8 | buffer[1] << 16 | buffer[0] << 24;
+        //ESP_LOGD("hdlc", "Value of uvalue is %u", uvalue);
+      } else if (tag == 0x10) {
+        Serial.readBytes(buffer, 2);
+        //value = buffer[0] | buffer[1] << 8; //
+        is_signed = true;
+        value = buffer[1] | buffer[0] << 8;
+        //ESP_LOGD("hdlc", "(Signed) Value of value is %d", value);
+      } else if (tag == 0x12) {
+        Serial.readBytes(buffer, 2);
+        //uvalue = buffer[0] | buffer[1] << 8; //
+        uvalue = buffer[1] | buffer[0] << 8;
+        //ESP_LOGD("hdlc", "(Unsigned) Value of uvalue is %u", uvalue);
+      } else {
+        ESP_LOGE("hdlc", "unknown tag %X", tag);
+      }
+
+      int8_t scaler;
+      uint8_t unit;
+      if(struct_len == 3) {
+        Serial.readBytes(buffer, 6);
+        scaler = buffer[3];
+        unit = buffer[5];
+        //ESP_LOGD("hdlc", "Scaler %u", scaler);
+        //ESP_LOGD("hdlc", "Unit %d", buffer[5]);
+
+      if(!is_signed)
+        value = uvalue;
+
+        double scaled_value = pow(10, scaler) * value;
+
+        // Volt and Ampere are the only two units where p1reader.yaml doesn't specify
+        // we should report in 1/1000, all others should be divided.
+        if(unit != 33 && unit != 35)
+          scaled_value = scaled_value / 1000;
+
+        parseRow(parsed, obis, scaled_value);
+      }
+
+      return true;
+    }
+
+    /* Reads messages formatted according to "Branschrekommendation v1.2", which
+       at the time of writing (20210207) is used by Tekniska Verken's Aidon 6442SE
+       meters. This is a binary format, with a HDLC Frame.
+       This code is in no way a generic HDLC Frame parser, but it does the job
+       of decoding this particular data stream.
+    */
+    void readHDLCMessage()
+    {
+      if (available())
+      {
+        uint8_t data = 0;
+        uint16_t crc = 0x0000;
+        ParsedMessage parsed = ParsedMessage();
+
+        while (parseHDLCState == OUTSIDE_FRAME)
+        {
+          data = Serial.read();
+          if (data == 0x7e)
+          {
+            // ESP_LOGD("hdlc", "Found start of frame");
+            parseHDLCState = FOUND_FRAME;
+            break;
+
+            int8_t next = peek();
+
+            // ESP_LOGD("hdlc", "Next is %d", next);
+
+            if (next == 0x7e)
+            {
+              Serial.read(); // We were actually at the end flag, consume the start flag of the next frame.
+            } else if (next == -1) {
+              ESP_LOGE("hdlc", "No char available after flag, out of sync. Returning");
+              parseHDLCState = OUTSIDE_FRAME;
+              return;
+            }
+          }
+        }
+
+        if (parseHDLCState == FOUND_FRAME)
+        {
+          // Read various static HDLC Frame information we don't care about
+          int len = Serial.readBytes(buffer, 12);
+          if (len != 12) {
+            ESP_LOGE("hdlc", "Expected 12 bytes, got %d bytes - out of sync. Returning", len);
+            parseHDLCState = OUTSIDE_FRAME;
+            return;
+          }
+          // ESP_LOGD("hdlc", "Got %d HDLC bytes, now reading 4 Invoke ID And Priority bytes", len);
+          len = Serial.readBytes(buffer, 4);
+          if (!len == 4 || buffer[0] != 0x40 || buffer[1] != 0x00 || buffer[2] != 0x00 || buffer[3] != 0x00)
+          {
+            ESP_LOGE("hdlc", "Expected 0x40 0x00 0x00 0x00, got %X %X %X %X - out of sync, returning.", buffer[0], buffer[1], buffer[2], buffer[3]);
+            parseHDLCState = OUTSIDE_FRAME;
+            return;
+          }
+        }
+
+        data = Serial.read(); // Expect length of time field, usually 0
+        //ESP_LOGD("hdlc", "Length of datetime field is %d", data);
+        Serial.readBytes(buffer, data);
+
+        data = Serial.read();
+        ESP_LOGD("hdlc", "Expect 0x01 (array tag), got %02X", data);
+        if(data != 0x01) {
+          parseHDLCState = OUTSIDE_FRAME;
+          return;
+        }
+
+        uint8_t array_length = Serial.read();
+        ESP_LOGD("hdlc", "Array length is %d", array_length);
+
+        for(int i=0;i<array_length;i++) {
+          if(!readHDLCStruct(&parsed)) {
+            parseHDLCState = OUTSIDE_FRAME;
+            return;
+          }
+        }
+
+        publishSensors(&parsed);
+
+
+        while (true)
+        {
+          data = Serial.read();
+          //ESP_LOGD("hdlc", "Read char %02X", data);
+          if (data == 0x7e)
+          {
+            ESP_LOGD("hdlc", "Found end of frame");
+            parseHDLCState = OUTSIDE_FRAME;
+            return;
+          }
         }
       }
     }
